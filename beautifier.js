@@ -101,7 +101,7 @@ class Beautifier {
     }
 }
 
-const beautifier = new Beautifier('rgb(24, 114, 255)'); // 务必在这里填入你设置的主题色，没有设置可以不填
+const beautifier = new Beautifier('rgb(24, 144, 255)'); // 务必在这里填入你设置的主题色，没有设置可以不填
 window。beautifier = beautifier;
 beautifier。observe();
 
