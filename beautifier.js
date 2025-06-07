@@ -101,9 +101,9 @@ class Beautifier {
     }
 }
 
-const beautifier = new Beautifier('rgb(24, 144, 255)'); // 务必在这里填入你设置的主题色，没有设置可以不填
-window。beautifier = beautifier;
-beautifier。observe();
+const beautifier = new Beautifier('rgb(24, 144, 255)');
+window.beautifier = beautifier;
+beautifier.observe();
 
 // 一个愚蠢到有点无敌的修复机制，不过工作良好
 (() => {
