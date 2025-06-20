@@ -99,7 +99,7 @@ button:focus {
 
 /* 背景里面的url可以替换为自己的图片url地址 */
 body {
-  background-image: linear-gradient(to bottom, var(--my-color), var(--my-color)), url("https://www.loliapi.com/acg") !important; 
+  background-image: linear-gradient(to bottom, var(--my-color), var(--my-color)), url("") !important; 
   background-repeat: no-repeat !important;
   background-size: cover !important;
   background-attachment: fixed !important;
@@ -257,11 +257,43 @@ padding: 0.5rem 1rem !important;
   color: var(--link-color);
   transition: all 0.3s ease;
   padding: 0 0.2rem;
+  position: relative;
+  display: inline-block;
 }
 
 .copyright-link:hover {
   color: var(--link-hover);
-  text-decoration: underline;
+  transform: translateY(-2px);
+}
+
+.copyright-link::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 2px;
+  bottom: -2px;
+  left: 0;
+  background-color: var(--link-hover);
+  transition: width 0.3s ease;
+}
+
+.copyright-link:hover::after {
+  width: 100%;
+}
+
+.copyright-info {
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  background-color: rgba(64, 158, 255, 0.05);
+  display: inline-block;
+}
+
+.copyright-info:hover {
+  background-color: rgba(64, 158, 255, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* 鼠标点击爱心特效样式 */
