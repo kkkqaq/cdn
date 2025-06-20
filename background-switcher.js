@@ -77,9 +77,6 @@ function initBackgroundSwitcher() {
 
   // 监听主题更改事件
   observeThemeChange();
-
-  // 预缓存当前主题视频
-  preCacheCurrentVideo();
 }
 
 // 从API获取视频URL
@@ -128,39 +125,6 @@ async function getVideoUrlFromApi(theme) {
     videoBackgrounds[theme].url = fallbackUrl;
     return fallbackUrl;
   }
-}
-
-// 预缓存当前主题视频 - 懒加载模式
-async function preCacheCurrentVideo() {
-  const theme = isLightTheme() ? 'light' : 'dark';
-  
-  // 仅在未加载状态下执行预缓存
-  if (videoCache.status[theme] === 'unloaded' || videoCache.status[theme] === 'error') {
-    videoCache.status[theme] = 'loading';
-    
-    try {
-      // 先获取最新的视频URL
-      const videoUrl = await getVideoUrlFromApi(theme);
-      
-      if (!videoUrl) {
-        throw new Error('获取视频URL失败');
-      }
-      
-      // 使用 fetch 先获取视频元数据，不下载完整视频
-      const response = await fetch(videoUrl, { method: 'HEAD' });
-      if (!response.ok) throw new Error('视频资源不可用');
-      
-      // 标记为已加载
-      videoCache.status[theme] = 'loaded';
-      console.log(`${theme}主题视频元数据已预加载`);
-      return true;
-    } catch (error) {
-      console.error(`预加载${theme}主题视频失败:`, error);
-      videoCache.status[theme] = 'error';
-      return false;
-    }
-  }
-  return videoCache.status[theme] === 'loaded';
 }
 
 // 从CSS文件中提取背景图片URL
@@ -330,24 +294,6 @@ async function setVideoBasedOnTheme() {
   showLoadingIndicator();
   
   try {
-    // 检查视频缓存状态，如果是错误状态则重试一次
-    if (videoCache.status[theme] === 'error') {
-      // 尝试重新加载
-      const success = await preCacheCurrentVideo();
-      if (!success) {
-        hideLoadingIndicator();
-        showErrorNotification('视频资源不可用，已切换回静态背景');
-        // 自动切回图片背景
-        setTimeout(() => {
-          if (currentBackgroundType === 'video') {
-            deactivateVideoBackground();
-            saveUserPreference();
-          }
-        }, 1500);
-        return;
-      }
-    }
-    
     // 获取最新的视频URL
     const videoUrl = await getVideoUrlFromApi(theme);
     console.log(`设置${theme}主题视频URL:`, videoUrl);
@@ -361,6 +307,9 @@ async function setVideoBasedOnTheme() {
     // 应用视频URL
     const videoSource = bgVideo.querySelector('source');
     if (videoSource) {
+      // 清除之前的事件监听器
+      clearVideoEventListeners();
+      
       videoSource.src = video.url;
       videoSource.type = video.type;
       
@@ -379,7 +328,7 @@ async function setVideoBasedOnTheme() {
       }, 20000); // 20秒超时，避免用户等待过长时间
       
       // 监听加载事件
-      bgVideo.onloadeddata = () => {
+      bgVideo.addEventListener('loadeddata', function onVideoLoad() {
         // 清除超时计时器
         clearTimeout(loadTimeout);
         
@@ -394,9 +343,13 @@ async function setVideoBasedOnTheme() {
         
         // 开始播放
         playVideo();
-      };
+        
+        // 移除事件监听器，避免重复触发
+        bgVideo.removeEventListener('loadeddata', onVideoLoad);
+      });
       
-      bgVideo.onerror = (e) => {
+      // 错误处理
+      bgVideo.addEventListener('error', function onVideoError(e) {
         // 清除超时计时器
         clearTimeout(loadTimeout);
         
@@ -412,10 +365,19 @@ async function setVideoBasedOnTheme() {
             saveUserPreference();
           }
         }, 1500);
-      };
+        
+        // 移除事件监听器，避免重复触发
+        bgVideo.removeEventListener('error', onVideoError);
+      });
       
       // 加载视频
       bgVideo.load();
+      
+      // 设置循环
+      bgVideo.loop = true;
+      
+      // 确保视频静音
+      bgVideo.muted = true;
     } else {
       throw new Error('未找到视频源元素');
     }
@@ -432,6 +394,19 @@ async function setVideoBasedOnTheme() {
         saveUserPreference();
       }
     }, 1500);
+  }
+}
+
+// 清除视频事件监听器
+function clearVideoEventListeners() {
+  // 使用克隆替换的方式移除所有事件监听器
+  if (bgVideo) {
+    const oldVideo = bgVideo;
+    const newVideo = oldVideo.cloneNode(true);
+    if (oldVideo.parentNode) {
+      oldVideo.parentNode.replaceChild(newVideo, oldVideo);
+      bgVideo = newVideo;
+    }
   }
 }
 
@@ -459,12 +434,11 @@ function showLoadingIndicator() {
     
     // 添加动画样式
     const style = document.createElement('style');
-    style.textContent = `
-      @keyframes spin {
-        0% { transform: translate(-50%, -50%) rotate(0deg); }
-        100% { transform: translate(-50%, -50%) rotate(360deg); }
-      }
-    `;
+    style.textContent = 
+      "@keyframes spin {" +
+      "  0% { transform: translate(-50%, -50%) rotate(0deg); }" +
+      "  100% { transform: translate(-50%, -50%) rotate(360deg); }" +
+      "}";
     document.head.appendChild(style);
     
     // 添加到页面
@@ -495,13 +469,21 @@ function isLightTheme() {
 // 播放视频
 function playVideo() {
   try {
-    if (bgVideo.paused) {
+    if (bgVideo && bgVideo.paused) {
+      // 确保视频静音，避免自动播放策略阻止播放
+      bgVideo.muted = true;
+      
       const playPromise = bgVideo.play();
       
       if (playPromise !== undefined) {
         playPromise.catch(error => {
           console.error('视频播放失败:', error);
-          showErrorNotification('视频播放失败，请稍后再试');
+          // 尝试使用静音播放
+          bgVideo.muted = true;
+          bgVideo.play().catch(e => {
+            console.error('尝试静音播放失败:', e);
+            showErrorNotification('视频播放失败，请稍后再试');
+          });
         });
       }
     }
@@ -513,7 +495,7 @@ function playVideo() {
 // 暂停视频
 function pauseVideo() {
   try {
-    if (!bgVideo.paused) {
+    if (bgVideo && !bgVideo.paused) {
       bgVideo.pause();
     }
   } catch (error) {
@@ -527,9 +509,6 @@ function observeThemeChange() {
   const observer = new MutationObserver(mutations => {
     mutations.forEach(mutation => {
       if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        // 预缓存新主题的视频
-        preCacheCurrentVideo();
-        
         // 如果当前是视频背景，则根据新主题更新视频
         if (currentBackgroundType === 'video') {
           setVideoBasedOnTheme();
@@ -583,53 +562,27 @@ function showVideoChangeNotification(description, isError = false) {
     
     // 完全隐藏后移除
     setTimeout(() => {
-      document.body.removeChild(notification);
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
     }, 300);
   }, 3000);
 }
 
-// 添加视频循环功能
-function setupVideoLoop() {
-  // 监听视频结束事件
-  bgVideo.addEventListener('ended', () => {
-    // 重新播放视频
-    bgVideo.currentTime = 0;
-    playVideo();
-  });
-  
-  // 监听视频错误事件
-  bgVideo.addEventListener('error', (e) => {
-    console.error('视频加载或播放出错:', e);
-    showErrorNotification('视频加载失败，请稍后再试');
-    // 更新缓存状态
-    const theme = isLightTheme() ? 'light' : 'dark';
-    videoCache.status[theme] = 'error';
-    hideLoadingIndicator();
-  });
-  
-  // 监听视频卸载事件
-  bgVideo.addEventListener('emptied', () => {
-    console.log('视频已卸载');
-    hideLoadingIndicator();
-  });
-}
-
 // 在页面加载完成后初始化
-document。addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
   // 延迟初始化以确保所有元素都已加载
   setTimeout(() => {
     initBackgroundSwitcher();
-    setupVideoLoop();
     
     // 添加视频样式
     const style = document.createElement('style');
-    style.textContent = `
-      .video-background video {
-        object-fit: cover;
-        width: 100%;
-        height: 100%;
-      }
-    `;
+    style.textContent = 
+      ".video-background video {" +
+      "  object-fit: cover;" +
+      "  width: 100%;" +
+      "  height: 100%;" +
+      "}";
     
     document.head.appendChild(style);
   }, 1000);
