@@ -223,8 +223,8 @@ function setVideoBasedOnTheme() {
   
   try {
     // 从video元素的data属性获取当前主题的视频URL和描述
-    const videoUrl = bgVideo.getAttribute(`data-${theme}-url`);
-    const videoDesc = bgVideo.getAttribute(`data-${theme}-desc`) || '视频背景';
+    const videoUrl = bgVideo.getAttribute('data-' + theme + '-url');
+    const videoDesc = bgVideo.getAttribute('data-' + theme + '-desc') || '视频背景';
     
     if (!videoUrl) {
       throw new Error('无法获取有效的视频URL');
@@ -240,8 +240,8 @@ function setVideoBasedOnTheme() {
       videoSource.type = "video/mp4";
       
       // 设置超时处理，避免长时间加载
-      let loadTimeout = setTimeout(() => {
-        console.warn(`视频加载超时`);
+      let loadTimeout = setTimeout(function() {
+        console.warn('视频加载超时');
         hideLoadingIndicator();
         showErrorNotification('视频加载超时，已切换回静态背景');
         videoCache.status[theme] = 'error';
@@ -285,7 +285,7 @@ function setVideoBasedOnTheme() {
         videoCache.status[theme] = 'error';
         
         // 自动切回图片背景
-        setTimeout(() => {
+        setTimeout(function() {
           if (currentBackgroundType === 'video') {
             deactivateVideoBackground();
             saveUserPreference();
@@ -314,7 +314,7 @@ function setVideoBasedOnTheme() {
     videoCache.status[theme] = 'error';
     
     // 自动切回图片背景
-    setTimeout(() => {
+    setTimeout(function() {
       if (currentBackgroundType === 'video') {
         deactivateVideoBackground();
         saveUserPreference();
@@ -384,7 +384,7 @@ function hideLoadingIndicator() {
 
 // 显示错误通知
 function showErrorNotification(message) {
-  showVideoChangeNotification(`❌ ${message}`, true);
+  showVideoChangeNotification(message, true);
 }
 
 // 检查是否为亮色主题
@@ -402,11 +402,11 @@ function playVideo() {
       const playPromise = bgVideo.play();
       
       if (playPromise !== undefined) {
-        playPromise.catch(error => {
+        playPromise.catch(function(error) {
           console.error('视频播放失败:', error);
           // 尝试使用静音播放
           bgVideo.muted = true;
-          bgVideo.play().catch(e => {
+          bgVideo.play().catch(function(e) {
             console.error('尝试静音播放失败:', e);
             showErrorNotification('视频播放失败，请稍后再试');
           });
@@ -432,8 +432,8 @@ function pauseVideo() {
 // 监听主题变化
 function observeThemeChange() {
   // 使用MutationObserver监听类名变化
-  const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
       if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
         // 如果当前是视频背景，则根据新主题更新视频
         if (currentBackgroundType === 'video') {
@@ -455,9 +455,11 @@ function showVideoChangeNotification(description, isError = false) {
   // 创建通知元素
   const notification = document.createElement('div');
   notification.className = 'video-notification';
-  notification.innerHTML = isError 
-    ? `<i class="fas fa-exclamation-circle"></i> ${description}`
-    : `<i class="fas fa-video"></i> ${description}`;
+  if (isError) {
+    notification.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + description;
+  } else {
+    notification.innerHTML = '<i class="fas fa-video"></i> ' + description;
+  }
   
   // 添加样式
   Object.assign(notification.style, {
@@ -478,16 +480,16 @@ function showVideoChangeNotification(description, isError = false) {
   document.body.appendChild(notification);
   
   // 显示通知
-  setTimeout(() => {
+  setTimeout(function() {
     notification.style.opacity = '1';
   }, 10);
   
   // 3秒后隐藏
-  setTimeout(() => {
+  setTimeout(function() {
     notification.style.opacity = '0';
     
     // 完全隐藏后移除
-    setTimeout(() => {
+    setTimeout(function() {
       if (notification.parentNode) {
         notification.parentNode.removeChild(notification);
       }
@@ -496,9 +498,9 @@ function showVideoChangeNotification(description, isError = false) {
 }
 
 // 在页面加载完成后初始化
-document。addEventListener('DOMContentLoaded', () => {
+document。addEventListener('DOMContentLoaded', function() {
   // 延迟初始化以确保所有元素都已加载
-  setTimeout(() => {
+  setTimeout(function() {
     initBackgroundSwitcher();
     
     // 添加视频样式
