@@ -3,15 +3,17 @@
  * 支持在图片背景和视频背景之间切换，并记住用户选择
  */
 
-// 视频背景配置 - 每种模式只使用一个视频
+// 视频背景配置 - 包含API获取地址和视频信息
 const videoBackgrounds = {
   light: {
-    url: "https://img.8845.top/al/get_link.php?path=one/video/9ba3a7357adc03b3c641decaa34d66c0_preview.mp4",
+    apiUrl: "https://img.8845.top/al/get_link.php?path=one/video/9ba3a7357adc03b3c641decaa34d66c0_preview.mp4",
+    url: "", // 将由API动态获取
     type: "video/mp4",
     description: "魔女"
   },
   dark: {
-    url: "https://img.8845.top/al/get_link.php?path=one/video/6f2f3aada1d6603c05b076b7e6664caf_preview.mp4",
+    apiUrl: "https://img.8845.top/al/get_link.php?path=one/video/6f2f3aada1d6603c05b076b7e6664caf_preview.mp4",
+    url: "", // 将由API动态获取
     type: "video/mp4",
     description: "少女"
   }
@@ -74,27 +76,58 @@ function initBackgroundSwitcher() {
   preCacheCurrentVideo();
 }
 
+// 从API获取视频URL
+async function getVideoUrlFromApi(theme) {
+  try {
+    // 仅当URL为空时才获取
+    if (!videoBackgrounds[theme].url) {
+      const response = await fetch(videoBackgrounds[theme].apiUrl);
+      if (!response.ok) throw new Error('获取视频URL失败');
+      
+      const data = await response.json();
+      
+      // 确保API返回了正确的数据格式
+      if (data && data.success && data.data && data.data.url) {
+        videoBackgrounds[theme].url = data.data.url;
+        console.log(`已从API获取${theme}主题视频URL`);
+        return data.data.url;
+      } else {
+        throw new Error('API返回的数据格式不正确');
+      }
+    }
+    
+    return videoBackgrounds[theme].url;
+  } catch (error) {
+    console.error(`获取${theme}主题视频URL失败:`, error);
+    // 使用API地址作为备选URL(可能无法直接播放)
+    videoBackgrounds[theme].url = videoBackgrounds[theme].apiUrl;
+    return videoBackgrounds[theme].url;
+  }
+}
+
 // 预缓存当前主题视频 - 懒加载模式
-function preCacheCurrentVideo() {
+async function preCacheCurrentVideo() {
   const theme = isLightTheme() ? 'light' : 'dark';
   
   // 仅在未加载状态下执行预缓存
   if (videoCache.status[theme] === 'unloaded') {
     videoCache.status[theme] = 'loading';
     
-    // 使用 fetch 先获取视频元数据，不下载完整视频
-    fetch(videoBackgrounds[theme].url, { method: 'HEAD' })
-      .then(response => {
-        if (!response.ok) throw new Error('视频资源不可用');
-        
-        // 标记为已加载
-        videoCache.status[theme] = 'loaded';
-        console.log(`${theme}主题视频元数据已预加载`);
-      })
-      .catch(error => {
-        console.error(`预加载${theme}主题视频失败:`, error);
-        videoCache.status[theme] = 'error';
-      });
+    try {
+      // 先获取最新的视频URL
+      const videoUrl = await getVideoUrlFromApi(theme);
+      
+      // 使用 fetch 先获取视频元数据，不下载完整视频
+      const response = await fetch(videoUrl, { method: 'HEAD' });
+      if (!response.ok) throw new Error('视频资源不可用');
+      
+      // 标记为已加载
+      videoCache.status[theme] = 'loaded';
+      console.log(`${theme}主题视频元数据已预加载`);
+    } catch (error) {
+      console.error(`预加载${theme}主题视频失败:`, error);
+      videoCache.status[theme] = 'error';
+    }
   }
 }
 
@@ -258,9 +291,8 @@ function applyImageBackground() {
 }
 
 // 根据当前主题设置视频
-function setVideoBasedOnTheme() {
+async function setVideoBasedOnTheme() {
   const theme = isLightTheme() ? 'light' : 'dark';
-  const video = videoBackgrounds[theme];
   
   // 显示加载指示器
   showLoadingIndicator();
@@ -272,35 +304,45 @@ function setVideoBasedOnTheme() {
     return;
   }
   
-  // 应用视频URL
-  const videoSource = bgVideo.querySelector('source');
-  if (videoSource) {
-    videoSource.src = video.url;
-    videoSource.type = video.type;
+  try {
+    // 获取最新的视频URL
+    await getVideoUrlFromApi(theme);
+    const video = videoBackgrounds[theme];
     
-    // 监听加载事件
-    bgVideo.onloadeddata = () => {
-      // 视频元数据已加载
-      hideLoadingIndicator();
+    // 应用视频URL
+    const videoSource = bgVideo.querySelector('source');
+    if (videoSource) {
+      videoSource.src = video.url;
+      videoSource.type = video.type;
       
-      // 更新缓存状态
-      videoCache.status[theme] = 'loaded';
+      // 监听加载事件
+      bgVideo.onloadeddata = () => {
+        // 视频元数据已加载
+        hideLoadingIndicator();
+        
+        // 更新缓存状态
+        videoCache.status[theme] = 'loaded';
+        
+        // 显示通知
+        showVideoChangeNotification(video.description);
+        
+        // 开始播放
+        playVideo();
+      };
       
-      // 显示通知
-      showVideoChangeNotification(video.description);
+      bgVideo.onerror = () => {
+        hideLoadingIndicator();
+        showErrorNotification('视频加载失败，请稍后再试');
+        videoCache.status[theme] = 'error';
+      };
       
-      // 开始播放
-      playVideo();
-    };
-    
-    bgVideo.onerror = () => {
-      hideLoadingIndicator();
-      showErrorNotification('视频加载失败，请稍后再试');
-      videoCache.status[theme] = 'error';
-    };
-    
-    // 加载视频
-    bgVideo.load();
+      // 加载视频
+      bgVideo.load();
+    }
+  } catch (error) {
+    console.error('设置视频背景失败:', error);
+    hideLoadingIndicator();
+    showErrorNotification('获取视频资源失败，请稍后再试');
   }
 }
 
