@@ -731,4 +731,4 @@ const BackgroundSwitcher = (function() {
 })();
 
 // 在页面加载完成后初始化
-document。addEventListener('DOMContentLoaded', BackgroundSwitcher.init); 
+document.addEventListener('DOMContentLoaded', BackgroundSwitcher.init); 
