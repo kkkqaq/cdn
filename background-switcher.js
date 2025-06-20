@@ -2,8 +2,8 @@
  * 背景切换功能
  * 支持在图片背景和视频背景之间切换，并记住用户选择
  * 
- * @version 2.0.0
- * @author 重构 by FENG
+ * @version 2.0.1
+ * @author 重构并修复 by FENG
  */
 
 // 使用立即执行函数表达式 (IIFE) 创建模块化结构
@@ -27,7 +27,8 @@ const BackgroundSwitcher = (function() {
         light: 'unloaded', // unloaded, loading, loaded, error
         dark: 'unloaded'
       }
-    }
+    },
+    currentTheme: 'light' // 默认主题
   };
   
   // DOM元素引用
@@ -80,6 +81,10 @@ const BackgroundSwitcher = (function() {
       console.error('背景切换所需的DOM元素未找到');
       return;
     }
+    
+    // 确定当前主题
+    state.currentTheme = _determineCurrentTheme();
+    console.log('初始化时检测到的主题:', state.currentTheme);
     
     // 从CSS获取背景图片URL
     _extractBackgroundImagesFromCSS();
@@ -147,6 +152,10 @@ const BackgroundSwitcher = (function() {
         height: 100%;
       }
       
+      .bg-toggle-btn.active {
+        background-color: rgba(64, 158, 255, 0.2);
+      }
+      
       @keyframes spin {
         0% { transform: translate(-50%, -50%) rotate(0deg); }
         100% { transform: translate(-50%, -50%) rotate(360deg); }
@@ -154,6 +163,39 @@ const BackgroundSwitcher = (function() {
     `;
     
     document.head.appendChild(style);
+  }
+  
+  /**
+   * 确定当前网站主题
+   * @private
+   * @returns {string} 当前主题 ('light'|'dark')
+   */
+  function _determineCurrentTheme() {
+    // 检查文档根元素
+    if (document.documentElement.classList.contains('hope-ui-light')) {
+      return 'light';
+    }
+    
+    if (document.documentElement.classList.contains('hope-ui-dark')) {
+      return 'dark';
+    }
+    
+    // 检查body元素
+    if (document.body.classList.contains('hope-ui-light')) {
+      return 'light';
+    }
+    
+    if (document.body.classList.contains('hope-ui-dark')) {
+      return 'dark';
+    }
+    
+    // 检查媒体查询以获取系统首选项
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    
+    // 默认返回亮色主题
+    return 'light';
   }
   
   /**
@@ -364,7 +406,7 @@ const BackgroundSwitcher = (function() {
    * @returns {boolean} 是否为亮色主题
    */
   function _isLightTheme() {
-    return document.documentElement.classList.contains('hope-ui-light');
+    return state.currentTheme === 'light';
   }
   
   /**
@@ -372,7 +414,11 @@ const BackgroundSwitcher = (function() {
    * @private
    */
   function _setVideoBasedOnTheme() {
-    const theme = _isLightTheme() ? 'light' : 'dark';
+    // 使用存储的主题状态
+    const theme = state.currentTheme;
+    
+    console.log('设置视频背景，当前主题:', theme);
+    console.log('视频缓存状态:', state.videoCache.status[theme]);
     
     // 如果视频已加载并且没有错误，直接使用缓存
     if (state.videoCache.status[theme] === 'loaded') {
@@ -392,6 +438,9 @@ const BackgroundSwitcher = (function() {
       // 从video元素的data属性获取当前主题的视频URL和描述
       const videoUrl = elements.bgVideo.getAttribute('data-' + theme + '-url');
       const videoDesc = elements.bgVideo.getAttribute('data-' + theme + '-desc') || '视频背景';
+      
+      console.log('获取到的视频URL:', videoUrl);
+      console.log('获取到的视频描述:', videoDesc);
       
       if (!videoUrl) {
         throw new Error('无法获取有效的视频URL');
@@ -505,7 +554,34 @@ const BackgroundSwitcher = (function() {
     _showErrorNotification(`${message}，已切换回静态背景`);
     state.videoCache.status[theme] = 'error';
     
-    // 自动切回图片背景
+    // 尝试使用另一主题的视频作为备份
+    const alternateTheme = theme === 'light' ? 'dark' : 'light';
+    if (state.videoCache.status[alternateTheme] === 'loaded') {
+      console.log(`尝试使用${alternateTheme}主题视频作为备份`);
+      const alternateUrl = elements.bgVideo.getAttribute('data-' + alternateTheme + '-url');
+      if (alternateUrl) {
+        const videoSource = elements.bgVideo.querySelector('source');
+        if (videoSource) {
+          videoSource.src = alternateUrl;
+          elements.bgVideo.load();
+          elements.bgVideo.play().catch(() => {
+            // 如果备用视频也失败，就切回图片背景
+            _autoSwitchToImageBackground();
+          });
+          return;
+        }
+      }
+    }
+    
+    // 如果没有可用的备用视频，自动切回图片背景
+    _autoSwitchToImageBackground();
+  }
+  
+  /**
+   * 自动切换回图片背景
+   * @private
+   */
+  function _autoSwitchToImageBackground() {
     setTimeout(() => {
       if (state.backgroundType === 'video') {
         _deactivateVideoBackground();
@@ -638,18 +714,33 @@ const BackgroundSwitcher = (function() {
     
     // 使用MutationObserver监听类名变化
     themeObserver = new MutationObserver(mutations => {
+      let themeChanged = false;
+      
       mutations.forEach(mutation => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          // 如果当前是视频背景，则根据新主题更新视频
-          if (state.backgroundType === 'video') {
-            _setVideoBasedOnTheme();
+          // 检查主题是否发生变化
+          const newTheme = _determineCurrentTheme();
+          if (newTheme !== state.currentTheme) {
+            console.log(`主题从 ${state.currentTheme} 变更为 ${newTheme}`);
+            state.currentTheme = newTheme;
+            themeChanged = true;
           }
         }
       });
+      
+      // 如果当前是视频背景且主题已变化，更新视频
+      if (themeChanged && state.backgroundType === 'video') {
+        _setVideoBasedOnTheme();
+      }
     });
     
-    // 监视根元素的类名变化
+    // 监视根元素和body元素的类名变化
     themeObserver.observe(document.documentElement, { 
+      attributes: true, 
+      attributeFilter: ['class'] 
+    });
+    
+    themeObserver.observe(document.body, { 
       attributes: true, 
       attributeFilter: ['class'] 
     });
@@ -731,4 +822,4 @@ const BackgroundSwitcher = (function() {
 })();
 
 // 在页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', BackgroundSwitcher.init); 
+document。addEventListener('DOMContentLoaded', BackgroundSwitcher.init); 
