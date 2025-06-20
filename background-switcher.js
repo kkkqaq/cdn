@@ -3,28 +3,6 @@
  * 支持在图片背景和视频背景之间切换，并记住用户选择
  */
 
-// 视频背景配置 - 包含API获取地址和视频信息
-const videoBackgrounds = {
-  light: {
-    // API接口地址，供直接获取视频URL
-    apiUrl: "https://img.8845.top/al/get_link.php",
-    // 视频路径参数
-    videoPath: "one/video/9ba3a7357adc03b3c641decaa34d66c0_preview.mp4",
-    url: "", // 将由API动态获取
-    type: "video/mp4",
-    description: "魔女"
-  },
-  dark: {
-    // API接口地址，供直接获取视频URL
-    apiUrl: "https://img.8845.top/al/get_link.php",
-    // 视频路径参数
-    videoPath: "one/video/6f2f3aada1d6603c05b076b7e6664caf_preview.mp4",
-    url: "", // 将由API动态获取
-    type: "video/mp4",
-    description: "少女"
-  }
-};
-
 // 图片背景配置 - 动态从CSS获取
 let imageBackgrounds = {
   light: "",
@@ -37,10 +15,8 @@ const STORAGE_KEY = 'background_preference';
 // 当前背景类型状态 (image | video)
 let currentBackgroundType = 'image';
 
-// 视频缓存
+// 视频缓存状态
 const videoCache = {
-  light: null,
-  dark: null,
   status: {
     light: 'unloaded', // unloaded, loading, loaded, error
     dark: 'unloaded'
@@ -77,54 +53,6 @@ function initBackgroundSwitcher() {
 
   // 监听主题更改事件
   observeThemeChange();
-}
-
-// 从API获取视频URL
-async function getVideoUrlFromApi(theme) {
-  try {
-    console.log(`正在获取${theme}主题视频URL...`);
-    
-    // 构建完整的API请求URL，使用videoPath作为参数
-    const fullApiUrl = `${videoBackgrounds[theme].apiUrl}?path=${encodeURIComponent(videoBackgrounds[theme].videoPath)}`;
-    console.log(`API请求URL: ${fullApiUrl}`);
-    
-    const response = await fetch(fullApiUrl);
-    
-    if (!response.ok) {
-      console.error(`API请求失败，状态码: ${response.status}`);
-      throw new Error('获取视频URL失败');
-    }
-    
-    // 检查内容类型是否为JSON
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      console.warn(`API未返回JSON格式数据，而是返回: ${contentType}`);
-      // 如果响应不是JSON，创建一个直接访问的URL
-      const directUrl = `https://img.8845.top/${videoBackgrounds[theme].videoPath}`;
-      videoBackgrounds[theme].url = directUrl;
-      return directUrl;
-    }
-    
-    const data = await response.json();
-    console.log("API返回数据:", data);
-    
-    // 确保API返回了正确的数据格式
-    if (data && data.success && data.data && data.data.url) {
-      videoBackgrounds[theme].url = data.data.url;
-      console.log(`已从API获取${theme}主题视频URL:`, data.data.url);
-      return data.data.url;
-    } else {
-      console.error("API返回数据格式不符合预期:", data);
-      throw new Error('API返回的数据格式不正确');
-    }
-  } catch (error) {
-    console.error(`获取${theme}主题视频URL失败:`, error);
-    // 尝试使用备用URL策略
-    const fallbackUrl = `https://img.8845.top/${videoBackgrounds[theme].videoPath}`;
-    console.log(`使用备用URL: ${fallbackUrl}`);
-    videoBackgrounds[theme].url = fallbackUrl;
-    return fallbackUrl;
-  }
 }
 
 // 从CSS文件中提取背景图片URL
@@ -287,31 +215,29 @@ function applyImageBackground() {
 }
 
 // 根据当前主题设置视频
-async function setVideoBasedOnTheme() {
+function setVideoBasedOnTheme() {
   const theme = isLightTheme() ? 'light' : 'dark';
   
   // 显示加载指示器
   showLoadingIndicator();
   
   try {
-    // 获取最新的视频URL
-    const videoUrl = await getVideoUrlFromApi(theme);
-    console.log(`设置${theme}主题视频URL:`, videoUrl);
+    // 从video元素的data属性获取当前主题的视频URL和描述
+    const videoUrl = bgVideo.getAttribute(`data-${theme}-url`);
+    const videoDesc = bgVideo.getAttribute(`data-${theme}-desc`) || '视频背景';
     
     if (!videoUrl) {
       throw new Error('无法获取有效的视频URL');
     }
     
-    const video = videoBackgrounds[theme];
+    // 清除之前的事件监听器
+    clearVideoEventListeners();
     
-    // 应用视频URL
+    // 重新获取视频元素（因为clearVideoEventListeners会克隆并替换元素）
     const videoSource = bgVideo.querySelector('source');
     if (videoSource) {
-      // 清除之前的事件监听器
-      clearVideoEventListeners();
-      
-      videoSource.src = video.url;
-      videoSource.type = video.type;
+      videoSource.src = videoUrl;
+      videoSource.type = "video/mp4";
       
       // 设置超时处理，避免长时间加载
       let loadTimeout = setTimeout(() => {
@@ -339,7 +265,7 @@ async function setVideoBasedOnTheme() {
         videoCache.status[theme] = 'loaded';
         
         // 显示通知
-        showVideoChangeNotification(video.description);
+        showVideoChangeNotification(videoDesc);
         
         // 开始播放
         playVideo();
@@ -570,7 +496,7 @@ function showVideoChangeNotification(description, isError = false) {
 }
 
 // 在页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', () => {
+document。addEventListener('DOMContentLoaded', () => {
   // 延迟初始化以确保所有元素都已加载
   setTimeout(() => {
     initBackgroundSwitcher();
